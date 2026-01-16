@@ -1,0 +1,139 @@
+# 残差剥离塔 (Residual-Stripping Tower) 训练配置
+# 用于深度伪造检测的泛化能力增强
+#
+# 语义监督模式：
+# - hubert: 使用HuBERT特征蒸馏（需预计算特征，已无法使用）
+# - wav2vec_ctc: 使用Wav2Vec2-CTC预测phone ID（推荐，可在线提取）
+
+datamodule:
+  _target_: safeear.datas.asvspoof19_rst.RSTDataModule
+  batch_size: 4
+  num_workers: 8
+  pin_memory: true
+  DataClass_dict:
+    _target_: safeear.datas.asvspoof19_rst.RSTDataClass
+    train_path: ["datas/ASVSpoof2019/train_fixed.tsv", "datas/ASVSpoof2019/ASVspoof2019.LA.cm.train.trn.txt", null]
+    val_path: ["datas/ASVSpoof2019/dev_fixed.tsv", "datas/ASVSpoof2019/ASVspoof2019.LA.cm.dev.trl.txt", null]
+    test_path: ["datas/ASVSpoof2019/eval_fixed.tsv", "datas/ASVSpoof2019/ASVspoof2019.LA.cm.eval.trl.txt", null]
+    max_len: 64320  # 320的整数倍 (201帧), 之前是64600 (201.875帧)
+    # 语义监督模式: "hubert" 或 "wav2vec_ctc"
+    semantic_mode: "wav2vec_ctc"  # 推荐使用wav2vec_ctc，无需预计算特征
+    # F0相关配置
+    f0_dir: null  # 预计算F0目录，设为null则在线提取
+    extract_f0_online: true  # 是否在线提取F0（需要安装librosa）
+    # 特征对齐配置
+    encoder_strides: [8, 5, 4, 2]  # 与rst_model保持一致
+    align_features: true  # 启用特征对齐，确保所有监督特征长度一致
+
+# 残差剥离塔模型配置
+rst_model:
+  _target_: safeear.models.rst.RSTDetector
+  
+  # 编码器参数
+  encoder_dim: 1024
+  encoder_n_filters: 64
+  encoder_strides: [8, 5, 4, 2]  # 总下采样率: 320
+  
+  # 量化器参数
+  codebook_size: 1024
+  n_q_semantic: 1      # 语义VQ层数
+  n_q_speaker: 2       # 说话人VQ层数  
+  n_q_prosody: 2       # 韵律VQ层数
+  n_q_residual: 0      # 残差VQ层数 (0表示不对残差量化)
+  
+  # 语义监督配置
+  semantic_mode: "wav2vec_ctc"  # "hubert" 或 "wav2vec_ctc"
+  hubert_dim: 768               # HuBERT特征维度 (hubert模式)
+  num_phone_classes: 5003       # Wav2Vec CTC词汇表大小 (wav2vec_ctc模式)
+  
+  # 说话人监督配置
+  num_speakers: 20      # ASVSpoof2019训练集有20个说话人（分类模式）
+  speaker_embed_dim: 192  # ECAPA-TDNN输出维度（嵌入模式时使用）
+  
+  # 梯度反转
+  use_gradient_reversal: true
+  gr_alpha: 1.0
+  
+  # 检测器参数
+  num_classes: 2
+  detector_num_layers: 2
+  detector_num_heads: 8
+  detector_mlp_ratio: 2.0
+  detector_dropout: 0.1
+  
+  # 特征融合方式: 'residual_only', 'all_layers', 'weighted'
+  feature_fusion: 'residual_only'
+
+# 训练系统配置
+system:
+  _target_: safeear.trainer.rst_trainer.RSTTrainer
+  lr: 3.0e-4
+  lr_rst: 1.0e-4
+  lr_detector: 3.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+  max_epochs: 100
+  
+  # 损失权重
+  semantic_weight: 1.0
+  speaker_weight: 1.0
+  prosody_weight: 1.0
+  detection_weight: 1.0
+  commit_weight: 0.25
+  gr_weight: 0.5
+  
+  # 训练策略
+  freeze_rst_epochs: 0   # 前N个epoch冻结RST
+  use_speaker_classification: true  # true使用分类模式（与num_speakers>0对应）
+  use_focal_loss: false
+  label_smoothing: 0.0
+  
+  # 语义监督配置
+  semantic_mode: "wav2vec_ctc"  # "hubert" 或 "wav2vec_ctc"
+  w2v_model_name: "facebook/wav2vec2-xlsr-53-espeak-cv-ft"  # Wav2Vec CTC模型
+  
+  save_score_path: ${exp.dir}/${exp.name}
+
+# 实验配置
+exp: 
+  dir: Exps/
+  name: RST_ASVspoof19
+
+# 早停
+early_stopping:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_eer
+  mode: min
+  patience: 30
+  verbose: true
+
+# 检查点
+checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${exp.dir}/${exp.name}/checkpoints
+  monitor: val_eer
+  mode: min
+  verbose: true
+  save_top_k: 3
+  save_last: true
+  filename: '{epoch}-{val_eer:.4f}'
+
+# 日志（使用TensorBoard，无需wandb）
+logger:
+  _target_: pytorch_lightning.loggers.TensorBoardLogger
+  save_dir: ${exp.dir}/${exp.name}/logs
+  name: ${exp.name}
+  default_hp_metric: false
+
+# 训练器
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: [0]
+  max_epochs: 100
+  sync_batchnorm: true
+  default_root_dir: ${exp.dir}/${exp.name}/
+  accelerator: gpu
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  fast_dev_run: false
+  # gradient_clip_val: 1.0  # 手动优化模式下不支持，已在trainer中手动实现
