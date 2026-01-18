@@ -7,8 +7,8 @@
 
 datamodule:
   _target_: safeear.datas.asvspoof19_rst.RSTDataModule
-  batch_size: 4
-  num_workers: 8
+  batch_size: 8
+  num_workers: 16
   pin_memory: true
   DataClass_dict:
     _target_: safeear.datas.asvspoof19_rst.RSTDataClass
@@ -36,9 +36,9 @@ rst_model:
   
   # 量化器参数
   codebook_size: 1024
-  n_q_semantic: 1      # 语义VQ层数
-  n_q_speaker: 2       # 说话人VQ层数  
-  n_q_prosody: 2       # 韵律VQ层数
+  n_q_semantic: 2      # 语义VQ层数
+  n_q_speaker: 1       # 说话人VQ层数  
+  n_q_prosody: 1       # 韵律VQ层数
   n_q_residual: 0      # 残差VQ层数 (0表示不对残差量化)
   
   # 语义监督配置
@@ -128,7 +128,7 @@ logger:
 # 训练器
 trainer:
   _target_: pytorch_lightning.Trainer
-  devices: [0]
+  devices: [3]
   max_epochs: 100
   sync_batchnorm: true
   default_root_dir: ${exp.dir}/${exp.name}/

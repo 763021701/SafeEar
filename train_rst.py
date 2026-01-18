@@ -9,6 +9,7 @@ import os
 import warnings
 warnings.filterwarnings("ignore")
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
 import argparse
 import pytorch_lightning as pl
 import torch
@@ -68,6 +69,21 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     print_only(f"Instantiating logger <{cfg.logger._target_}>")
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name, "logs"), exist_ok=True)
     logger = hydra.utils.instantiate(cfg.logger)
+
+    # 保存配置：每次运行都保存到独立目录，避免覆盖历史 config.yaml
+    # - 写入 TensorBoardLogger 的 log_dir（包含 version_x）
+    # - 同时在 exp 根目录保存一份时间戳文件，并维护 config_latest.yaml
+    exp_dir = os.path.join(cfg.exp.dir, cfg.exp.name)
+    os.makedirs(exp_dir, exist_ok=True)
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    OmegaConf.save(cfg, os.path.join(exp_dir, f"config_{run_id}.yaml"))
+    try:
+        log_dir = getattr(logger, "log_dir", None)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+            OmegaConf.save(cfg, os.path.join(log_dir, "config.yaml"))
+    except Exception as e:
+        print_only(f"[WARN] Failed to save config into logger.log_dir: {e}")
     
     # 实例化训练器
     print_only(f"Instantiating trainer <{cfg.trainer._target_}>")
@@ -168,9 +184,6 @@ if __name__ == "__main__":
     
     # 创建实验目录
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name), exist_ok=True)
-    
-    # 保存配置
-    OmegaConf.save(cfg, os.path.join(cfg.exp.dir, cfg.exp.name, "config.yaml"))
     
     if args.mode == "train":
         train(cfg)
