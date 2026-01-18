@@ -44,7 +44,7 @@ rst_model:
   # 语义监督配置
   semantic_mode: "wav2vec_ctc"  # "hubert" 或 "wav2vec_ctc"
   hubert_dim: 768               # HuBERT特征维度 (hubert模式)
-  num_phone_classes: 5003       # Wav2Vec CTC词汇表大小 (wav2vec_ctc模式)
+  num_phone_classes: 392        # Wav2Vec CTC词汇表大小 (facebook/wav2vec2-xlsr-53-espeak-cv-ft 的实际词汇表大小)
   
   # 说话人监督配置
   num_speakers: 20      # ASVSpoof2019训练集有20个说话人（分类模式）
