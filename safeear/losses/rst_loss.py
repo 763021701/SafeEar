@@ -232,6 +232,15 @@ class DeepfakeDetectionLoss(nn.Module):
         logits: torch.Tensor,   # (B, 2)
         targets: torch.Tensor   # (B,) labels
     ) -> torch.Tensor:
+        if targets.numel() > 0:
+            tmin = int(targets.min().item())
+            tmax = int(targets.max().item())
+            if tmin < 0 or tmax >= logits.shape[-1]:
+                raise ValueError(
+                    f"[DeepfakeDetectionLoss] targets out of range: min={tmin}, max={tmax}, "
+                    f"num_classes={logits.shape[-1]}. "
+                    "这通常意味着batch解包错误（labels被speaker_id覆盖）或数据标签映射异常。"
+                )
         if self.use_focal_loss:
             return self._focal_loss(logits, targets)
         else:

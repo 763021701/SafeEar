@@ -220,8 +220,17 @@ class RSTTrainer(pl.LightningModule):
                 audio, hubert_feat, f0, uv, speaker_id, labels, audio_path = batch
             # 原始格式兼容
             elif len(batch) == 6:
-                audio, hubert_feat, f0, uv, labels, audio_path = batch
-                speaker_id = None
+                #audio, hubert_feat, f0, uv, labels, audio_path = batch
+                #speaker_id = None
+                last = batch[-1]
+                # audio_path通常是list[str]（collate_fn_rst_test）或str；labels通常是Tensor
+                if isinstance(last, (list, tuple, str)):
+                    audio, hubert_feat, f0, uv, labels, audio_path = batch
+                    speaker_id = None
+                else:
+                    # 默认按RST格式(无audio_path)处理
+                    audio, hubert_feat, f0, uv, speaker_id, labels = batch
+                    audio_path = None
             elif len(batch) == 5:
                 audio, hubert_feat, labels, speaker_id, audio_path = batch
                 f0, uv = None, None
