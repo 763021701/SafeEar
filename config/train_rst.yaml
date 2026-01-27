@@ -116,6 +116,8 @@ checkpoint:
   verbose: true
   save_top_k: 3
   save_last: true
+  # 只保存模型权重，显著减小ckpt体积，降低磁盘/临时目录压力
+  save_weights_only: true
   filename: '{epoch}-{val_eer:.4f}'
 
 # 日志（使用TensorBoard，无需wandb）

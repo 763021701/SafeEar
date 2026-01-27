@@ -70,10 +70,19 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name, "logs"), exist_ok=True)
     logger = hydra.utils.instantiate(cfg.logger)
 
+    # 重要：Lightning/fsspec 在保存 checkpoint 时会先写入临时文件（默认常落在 /tmp）。
+    # 若 /tmp 是小的 tmpfs，很容易出现 “No space left on device”。
+    # 这里把临时目录兜底切换到实验目录下（同一块磁盘），避免因 /tmp 空间不足训练中断。
+    exp_dir = os.path.join(cfg.exp.dir, cfg.exp.name)
+    tmp_dir = os.path.join(exp_dir, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    os.environ.setdefault("TMPDIR", tmp_dir)
+    os.environ.setdefault("TMP", tmp_dir)
+    os.environ.setdefault("TEMP", tmp_dir)
+
     # 保存配置：每次运行都保存到独立目录，避免覆盖历史 config.yaml
     # - 写入 TensorBoardLogger 的 log_dir（包含 version_x）
     # - 同时在 exp 根目录保存一份时间戳文件，并维护 config_latest.yaml
-    exp_dir = os.path.join(cfg.exp.dir, cfg.exp.name)
     os.makedirs(exp_dir, exist_ok=True)
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     OmegaConf.save(cfg, os.path.join(exp_dir, f"config_{run_id}.yaml"))
